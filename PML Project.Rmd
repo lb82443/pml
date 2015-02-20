@@ -1,0 +1,207 @@
+# Practical Machine Learning - Weight Lifting Activity Recogition
+
+## Introduction  
+
+This paper will analyze data from the weight lifting exercises data collected by researchers into human activity recognition. (See Appendix) The objective was to be able to detect when a subject was doing a particular exercise in a correct fashion, or in one of several ways that were incorrect.
+
+## Summary
+
+After downloading and cleaning a data set from the authors I was able to accurately predict all of the exam questions using a Random Forest model. Two models were compared, C5.0 and Random Forest.
+
+
+## Data
+
+The data was downloaded from the authors website and loaded into R. By reviewing the authors' paper I was able to determine that the rows with new_window set to yes appeared to be summary statistics. I will exclude those rows. I also was able to determine using the code below that 100 variables were all missing. These columns will be removed as well. I then drop some columns at the beginning of the data set related to row id's and date stamps. The classe variable will be the one we want to predict for this exercise. Once complete I have a data set I plan to partition for testing.
+
+
+```{r}
+
+setwd("C:\\Users\\Lou\\Documents\\rml\\project")
+
+
+library(caret)
+library(rattle)
+library(C50)
+library(randomForest)
+
+rawdata <- read.csv("pml-training.csv",  na.strings=c("","NA"))
+
+exam <- read.csv("pml-testing.csv", na.strings=c("","NA"))
+
+#utils::View(rawdata)
+
+#REading documenation shows that the new_window = yes varaibles appear to be summary statistics
+#I'll remove them for the analysis
+
+rawdata <- rawdata[rawdata$new_window=="no",]
+
+
+#Let's see how many variables seem to be all NA....quite a few under visual inspections
+
+NA_vars <- sapply(rawdata, function(x)all(is.na(x))) 
+
+summary(NA_vars)
+
+#Quite a few variables have all NA, visual inspection confirms that they are all NA
+# except for new_window Lets remove them from the analysis.... 
+
+
+
+rawdata <- rawdata[colSums(is.na(rawdata)) / nrow(rawdata) < .90]
+
+
+# These variables based on what documentation I can find are not relevant to our question
+# We'll drop them to simplify selection
+
+drops <- c("X","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
+rawdata <- rawdata[,!(names(rawdata) %in% drops)]
+
+```
+
+## The Models
+
+I'll use two models to try and predict the data, C5.0 and Random Forest. Each of the models does well at predicting categorical variables, which the classe variable is. [Model Documentation] http://topepo.github.io/caret/modelList.html  We'll split the rawdata data frame above into a 75% train and 25% test data set. We'll only run the models on the training data set and evaluate their performance once on the test data set. Measures of success will be the accuracy of the model on both test and training data sets. Any model that fails to yield a similar performance on both data sets will be rejected. The best model of the two will be used to predict the exam questions.
+
+### C5.0
+
+The C5.0 algorithm will be the first model run. I will use up to two trials and run our first model on the training data set. We'll also examine how many trials were used.
+
+```{r}
+
+# Create test and train partition for C5 model
+
+set.seed(1537)
+
+inTrain <- createDataPartition(y=rawdata$classe,
+                               p=0.75, list=FALSE)
+
+trainC5 <- rawdata[inTrain,]
+testC5 <- rawdata[-inTrain,]
+
+dim(training)
+
+modelC5a <- C5.0(classe ~ .,data=trainC5,trials=2 )
+
+modelC5a$trials
+
+```
+
+Even though we allowed up to two trials the model only used 1. Now let's see how well the model did on the training data set
+
+```{r}
+
+#Confusion matrix for training dataset
+
+confusionMatrix(predict(modelC5a, newdata=trainC5), trainC5$classe)
+
+```
+
+The accuracy was very good at over 99%, but let's examine the test data set to determine if we over fit. The accuracy should remain close to the training data set if we haven't.
+
+```{r}
+
+confusionMatrix(predict(modelC5a,newdata=testC5),testC5$classe)
+
+```
+
+The accuracy dropped to 96% in the test data set. Not bad, but perhaps random forest can do better.
+
+
+### Random Forest
+
+Next we'll run the random forest model. I will set a different seed and create all new training and test data sets.
+
+```{r}
+
+
+set.seed(2048)
+inTrain <- createDataPartition(y=rawdata$classe,
+                               p=0.75, list=FALSE)
+
+trainRF <- rawdata[inTrain,]
+testRF <- rawdata[-inTrain,]
+
+modelFit <- randomForest(classe ~ .,data=trainRF)
+modelFit
+
+```
+
+At first glance the error rate looks very good....lets examine the confusion matrix for the training data set.
+
+```{r}
+
+confusionMatrix(predict(modelFit,newdata=trainRF),trainRF$classe)
+
+```
+
+The confusion matrix looks excellent...lets see if it will hold up when run against the test group.
+
+```{r}
+
+confusionMatrix(predict(modelFit,newdata=testRF),testRF$classe)
+
+```
+
+This seems to hold up under testing! Let's see which variables were the most important to the model.
+
+```{r}
+
+varImpPlot(modelFit)
+
+```
+
+The decrease in Gini measure looks at the impact of each variable as it related to the terminal nodes at the end of the tree. The larger the value the more important the variable is. We can see the rollbelt and yawbelt are two of the most important measures in the model.
+
+Based on the confusion matrix results we will select this model to submit our answers with.
+
+## Summarized results
+
+Now we need to combine our our two tests and create an overall confusion matrix to estimate the performance of our model.
+
+```{r}
+
+# Here we find out the combined prediction expectation for both models
+
+testpred <- c(factor(predict(modelC5a,newdata=testC5)), factor(predict(modelFit,newdata=testRF)) )
+testact <- c(testC5$classe,testRF$classe )
+
+confusionMatrix(testpred,testact)
+
+```
+
+Even combining the results of the two models we still see an approximately 98% accuracy rate.
+
+## Conclusion
+
+It was interesting to note that even when the the name of the participant was left in the analysis it did not play a significant role in the models. I would have ordinarily excluded the participant's name to prevent the models from learning how a particular person was doing the exercise or "over fit". 
+
+I'd also like to see a test that includes women. The inclusion would make the study more practical in the real world.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Appendix
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+[Paper Location] http://groupware.les.inf.puc-rio.br/har#ixzz3SCW0TNyF
+
